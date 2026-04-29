@@ -14,172 +14,142 @@ Agents should use this to answer:
 
 ```
 SHUOSC_Network/
-  server/                          # Go module: github.com/shuosc/scnet-server
+  SHUOSC_Network-server-backend/    # Go module: github.com/shuosc/scnet-server
+    Containerfile                   # backend-only Podman image build
+    podman-compose.yml              # local backend + PostgreSQL deployment
+    config.yaml                     # runtime config mounted into container
+    .env.example                    # tracked env template for deployment
     cmd/scnet-server/main.go
     internal/
       api/
-        router.go                  # gin/chi route registration
-        middleware.go              # JWT extraction + RequireAdmin
-        auth_handler.go            # POST /auth/register, /auth/login
-        me_handler.go              # GET /me, PUT /me, PUT /me/password,
-                                   #   GET /me/peers
-        peer_handler.go            # POST /peer/register, GET /peer/config,
-                                   #   DELETE /peer/disconnect, PUT /peer/replace-key
-        admin_handler.go           # Admin endpoints (users, peers, invites,
-                                   #   summary, WG key rotation, WG toggle)
-        health_handler.go          # GET /health, GET /version
+        router.go                   # API routes; SPA serving opt-in only
+        middleware.go               # JWT extraction + RequireAdmin
+        auth_handler.go             # POST /auth/register, /auth/login
+        me_handler.go               # GET /me, PUT /me, PUT /me/password,
+                                    #   GET /me/peers
+        peer_handler.go             # POST /peer/register, GET /peer/config,
+                                    #   DELETE /peer/disconnect, PUT /peer/replace-key
+        admin_handler.go            # Admin endpoints (users, peers, invites,
+                                    #   summary, WG key rotation, WG toggle)
+        health_handler.go           # GET /health, GET /version
       auth/
-        service.go                 # AuthService interface + impl
-        password.go                # bcrypt helpers
+        service.go                  # AuthService interface + impl
+        password.go                 # bcrypt helpers
       account/
-        service.go                 # AccountService (self profile, password,
-                                   #   peer usage / peer list)
+        service.go                  # AccountService (self profile, password,
+                                    #   peer usage / peer list)
       peer/
-        manager.go                 # PeerManager interface + impl (wgctrl)
-        ipam.go                    # IPAM interface + impl
+        manager.go                  # PeerManager interface + impl (wgctrl)
+        ipam.go                     # IPAM interface + impl
       admin/
-        service.go                 # AdminService (summary aggregation,
-                                   #   forced peer disconnect/revoke)
+        service.go                  # AdminService (summary aggregation,
+                                    #   forced peer disconnect/revoke)
+      discovery/
+        reporter.go                 # POST /api/server-info reporter
       model/
-        user.go                    # User struct
-        peer.go                    # Peer struct
-        invite.go                  # InviteCode struct
+        user.go
+        peer.go
+        invite.go
       store/
-        db.go                      # PostgreSQL connection pool
-        user_store.go              # UserStore interface + impl
-                                   #   (add List, CountByStatus)
-        peer_store.go              # PeerStore interface + impl
-                                   #   (add List, CountByStatus,
-                                   #    FindByUserIDList)
-        invite_store.go            # InviteStore interface + impl
-                                   #   (add List, CountByState)
-    admin-panel/                    # Quasar SPA build output for Go embed
-      dist/spa/                     # copied build artifacts from server-panel/scnet-panel/
+        db.go                       # PostgreSQL connection + migrations
+        user_store.go
+        peer_store.go
+        invite_store.go
+    admin-panel/
+      dist/spa/                     # optional prebuilt SPA assets for local/manual fallback only
     migrations/
       001_init.sql
     config/
-      config.go                    # Config loading from env/yaml
+      config.go
     go.mod
     go.sum
 
-  cli/                             # Go module: github.com/shuosc/scnet-cli
+  SHUOSC_Network-client-core/       # Go module: github.com/shuosc/scnet-cli
     cmd/scnet/main.go
     internal/
       cmd/
-        root.go                    # cobra root command
-        connect.go                 # scnet connect
-        disconnect.go              # scnet disconnect
-        status.go                  # scnet status
-        export.go                  # scnet export-config
-        version.go                 # scnet version
+        root.go
+        connect.go
+        disconnect.go
+        status.go
+        export.go
+        version.go
       auth/
-        service.go                 # AuthService (HTTP client to server API)
+        discovery.go                # fetch server URL from Cloudflare Pages
+        service.go
       tunnel/
-        device.go                  # wireguard-go Device wrapper
-        uapi.go                    # UAPI configuration helper
+        device.go
+        uapi.go
       store/
-        credential.go              # ~/.scnet/credentials.json read/write
-        state.go                   # ~/.scnet/state.json read/write
-        config.go                  # ~/.scnet/config.json read/write
+        credential.go
+        state.go
+        config.go
     platform/
-      route_darwin.go
-      route_linux.go
-      route_windows.go
-      route_freebsd.go
-      route_openbsd.go
-      dns_darwin.go
-      dns_linux.go
-      dns_windows.go
+      dns_*.go
+      route_*.go
     go.mod
     go.sum
 
-  server-panel/scnet-panel/        # Quasar (Vue 3) SPA for user portal + admin console
+  SHUOSC_Network-server-frontend/   # Quasar (Vue 3) SPA; deploy separately to Cloudflare Pages
     package.json
-    quasar.config.ts               # Vite + Quasar config, output -> ../../server/admin-panel/dist/spa/
-    tsconfig.json
+    quasar.config.ts                # current distDir can populate backend admin-panel fallback
     public/
     src/
-      App.vue
       boot/
-        axios.ts                    # Axios setup + JWT interceptor
-        auth.ts                     # Shared auth bootstrap + role redirect
-      css/
-        quasar.variables.sass       # Brand colors only
+        auth.ts                     # shared auth bootstrap + role redirect
       layouts/
-        AuthLayout.vue              # Login page shell
-        UserLayout.vue              # Self-service portal shell
-        AdminLayout.vue             # QLayout + QDrawer + QPageContainer
+        AuthLayout.vue
+        UserLayout.vue
+        AdminLayout.vue
       pages/
-        LoginPage.vue               # Shared login entry
-        UserHomePage.vue            # Account status + peer usage
-        MyPeersPage.vue             # Own peer table + disconnect/replace-key
-        AccountSettingsPage.vue     # Contact info + password change
-        DashboardPage.vue           # Admin summary cards + system status
-        UsersPage.vue               # Admin user table + QDialog edit
-        UserDetailPage.vue          # Admin user info card + peer table
-        PeersPage.vue               # Admin peer table + disconnect/revoke
-        InvitesPage.vue             # Admin invite table + create invite QDialog
-        WGManagementPage.vue        # Admin WG key rotation + enable/disable
-        NotFoundPage.vue
-      components/
-        shell/
-          UserDrawer.vue            # User portal navigation
-          AdminDrawer.vue           # QDrawer navigation
-          AdminToolbar.vue          # QToolbar + QTabs
-        me/
-          PeerUsageCard.vue         # Current quota usage
-          MyPeerTable.vue           # Self peer table wrapper
-          ReplaceKeyDialog.vue      # Own peer key rotation dialog
-          ContactForm.vue           # Contact info form
-          PasswordForm.vue          # Password change form
-        dashboard/
-          SummaryCards.vue          # Admin stat cards
-          SystemStatusCard.vue      # Health/version card
-        users/
-          UserTable.vue             # Admin user QTable wrapper
-          UserEditDialog.vue        # QDialog + QForm + QInput
-        peers/
-          PeerTable.vue             # Admin peer QTable wrapper
-          PeerActions.vue           # Admin disconnect/revoke QBtn
-        invites/
-          InviteTable.vue           # Admin invite QTable wrapper
-          CreateInviteDialog.vue    # QDialog + QForm
-        common/
-          StatusBadge.vue           # QBadge wrapper
-          TableToolbar.vue          # QToolbar with filters
+        LoginPage.vue
+        UserHomePage.vue
+        MyPeersPage.vue
+        AccountSettingsPage.vue
+        DashboardPage.vue
+        UsersPage.vue
+        UserDetailPage.vue
+        PeersPage.vue
+        InvitesPage.vue
+        WGManagementPage.vue
       router/
         index.ts
         routes.ts
-      stores/
-        auth.ts                     # Pinia: JWT, current user identity + role
-        me.ts                       # Pinia: self profile + peer usage
-        myPeers.ts                  # Pinia: self peer list + actions
-        dashboard.ts                # Pinia: admin summary + health
-        users.ts                    # Pinia: admin user list, edit
-        peers.ts                    # Pinia: admin peer list, actions
-        invites.ts                  # Pinia: admin invite list, create
-        wg.ts                       # Pinia: WG server status, rotate key, toggle
       services/
-        me.ts                       # Typed self-service API client (Axios)
-        admin.ts                    # Typed API client (Axios)
+        http.ts                     # discovery + base URL handling
+        auth.ts
+        me.ts
+        admin.ts
+      stores/
+        auth.ts
+        me.ts
+        myPeers.ts
+        dashboard.ts
+        users.ts
+        peers.ts
+        invites.ts
+        wg.ts
       types/
-        api.ts                      # API response types
-        user.ts                     # Self-service user/account types
-        admin.ts                    # Admin-specific types
+        api.ts
+        user.ts
+        admin.ts
 
-  docs/
-    AGENTS.md
-    ARCHITECTURE.md
-    API_CONTRACT.md
-    SECURITY.md
-    WORKBOARD.md
-    IMPLEMENTATION.md
+  SHUOSC_Network-docs/
+    AgentDevDocs/
+      AGENTS.md
+      ARCHITECTURE.md
+      API_CONTRACT.md
+      SECURITY.md
+      WORKBOARD.md
+      IMPLEMENTATION.md
 ```
 
 ## Web Portal Route Map
 
-The embedded SPA must use explicit route guards so an LLM implementation does
-not invent ad-hoc navigation.
+The separately deployed SPA must use explicit route guards so an LLM
+implementation does not invent ad-hoc navigation. These are client-side routes
+for the Cloudflare Pages deployment. The backend only serves them when local
+SPA fallback is explicitly enabled for testing.
 
 | Route | Layout | Guard | Primary data | Redirect behavior |
 |------|--------|-------|--------------|-------------------|
@@ -940,7 +910,9 @@ What to do:
    `/admin/peer/:id/disconnect`, `/admin/peer/:id/revoke`, `PUT /admin/user/:id`,
    `GET /admin/invites`, `POST /admin/invite`) — routes wrapped in admin middleware
 7. Implement health_handler.go (Health, Version)
-8. Wire routes in router.go, including SPA fallbacks for `/app/*` and `/admin/*`
+8. Wire routes in router.go. Default to API-only behavior; expose `/app/*` and
+   `/admin/*` SPA fallbacks only when `SCNET_ENABLE_SPA_SERVING=true` and
+   `SCNET_SPA_DIR` points to prebuilt assets
 
 Done when: all API_CONTRACT.md endpoints return documented responses for both success and error cases.
 
@@ -1080,11 +1052,16 @@ Agents implementing Phase 1 MUST NOT implement:
 - Client CLI (Phase 2)
 - Any endpoint not listed in API_CONTRACT.md
 
-Phase 1 deliverables are server control plane plus the embedded web portal:
+Phase 1 deliverables are server control plane plus the separately deployed web
+portal:
 - Server starts, accepts auth, manages WireGuard peers, serves self-service and
-  admin endpoints, and serves the Quasar SPA under `/app/` and `/admin/`.
+  admin endpoints, and remains API-only by default in Podman.
+- Web portal builds and deploys separately to Cloudflare Pages. Backend-local
+  SPA serving is testing-only opt-in via `SCNET_ENABLE_SPA_SERVING` and
+  `SCNET_SPA_DIR`.
 - Test backend endpoints by curl and verify both user portal and admin console
-  against the same server. No client CLI needed in Phase 1.
+  against the deployed frontend origin or an explicit local fallback. No client
+  CLI needed in Phase 1.
 
 ```makefile
 # Makefile (project root)

@@ -37,6 +37,16 @@ All agents must preserve these rules:
 - server WireGuard key rotation and administrative toggle (enable/disable)
   are admin-only operations exposed via the HTTP API; the server never
   persists the private key beyond its in-memory copy
+- backend container deployment is API-only. Admin/user web panels are deployed
+  separately on Cloudflare Pages; Containerfile/Podman definitions must not
+  build or serve SPA assets by default
+- external communication must stay split across distinct planes:
+  browser -> Cloudflare Pages over HTTPS, SPA/CLI -> backend API over HTTPS,
+  client -> WireGuard endpoint over UDP, and discovery -> Cloudflare Pages
+  `/api/server-info` over HTTPS
+- these planes must not be merged: Cloudflare Pages must not carry WireGuard
+  UDP, `wg_endpoint` must not be represented as an API URL, and `api_url` must
+  not be used as a WireGuard endpoint
 - client WireGuard uses wireguard-go UAPI; no dependency on kernel WG on
   desktop clients
 - the authentication boundary is at the HTTP API layer, not inside the WG
@@ -59,6 +69,9 @@ or explain the intended deviation explicitly.
 ## Architectural Boundary
 
 Agents must preserve the separation of control plane and data plane.
+
+Agents must also preserve the separation of communication planes exposed to
+users and clients.
 
 ### Control plane
 
@@ -92,6 +105,43 @@ Rules:
 - routing decisions are server-side for the standard path
 - P2P path is experimental and must not break the standard path
 
+## Communication Plane Boundary
+
+The deployment model has four distinct communication planes:
+
+- frontend delivery plane: browser <-> Cloudflare Pages over HTTPS
+- control-plane API: SPA/CLI <-> backend API over HTTPS
+- WireGuard data plane: client <-> WireGuard endpoint over UDP
+- discovery plane: SPA/CLI/backend <-> Cloudflare Pages `/api/server-info`
+  over HTTPS
+
+Rules:
+
+- do not collapse these planes into a single origin or transport unless docs
+  are explicitly changed first
+- do not route WireGuard UDP through Cloudflare Pages
+- do not publish `wg_endpoint` as an HTTPS URL
+- do not use `api_url` as a WireGuard endpoint or tunnel address
+
+## Deployment Compatibility Policy
+
+Core frontend and backend code should remain deployment-agnostic wherever
+practical.
+
+Rules:
+
+- prefer preserving the existing external contract instead of hard-coding one
+  exposure method into the SPA or `scnet-server`
+- supported deployment modes should differ by configuration and external
+  adapters first, not by forking core business logic
+- public direct API exposure, public split deployment, and Lucky-based forward
+  exposure should be achievable without modifying core frontend/backend logic
+- reverse HTTP exposure modes may require new adapter components
+  (for example Worker/relay/agent code), but should not force incompatible
+  changes into `scnet-server` or the SPA unless the contract itself changes
+- when adding a new deployment mode, document which parts are:
+  config-only, deployment-only, adapter-only, or core-source changes
+
 ## Server Constraints
 
 Server-specific rules:
@@ -101,6 +151,8 @@ Server-specific rules:
 - WG control: golang.zx2c4.com/wireguard/wgctrl (netlink)
 - platform: Linux only, kernel >= 5.6 for built-in WireGuard
 - database: PostgreSQL, migrations managed in code
+- backend image/build path includes only the Go binary and migrations; no npm
+  or frontend build step belongs in the backend container by default
 
 ## Client Constraints
 
@@ -140,6 +192,7 @@ change:
 - WireGuard peer management logic
 - client credential storage format
 - platform support matrix
+- deployment boundary (backend container vs Cloudflare Pages frontend)
 
 ## Preferred Output Style
 

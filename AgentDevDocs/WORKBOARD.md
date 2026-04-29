@@ -27,12 +27,12 @@ Status:
 
 Deliverables:
 
-- `docs/ARCHITECTURE.md`
-- `docs/AGENTS.md`
-- `docs/API_CONTRACT.md`
-- `docs/IMPLEMENTATION.md`
-- `docs/SECURITY.md`
-- `docs/WORKBOARD.md`
+- `AgentDevDocs/ARCHITECTURE.md`
+- `AgentDevDocs/AGENTS.md`
+- `AgentDevDocs/API_CONTRACT.md`
+- `AgentDevDocs/IMPLEMENTATION.md`
+- `AgentDevDocs/SECURITY.md`
+- `AgentDevDocs/WORKBOARD.md`
 
 Exit criteria:
 
@@ -43,23 +43,30 @@ Exit criteria:
 
 Status:
 
-- implemented (backend + frontend build, tests pass; pending integration verification)
+- implemented (backend tests pass, frontend build passes, backend-only Podman deployment validated locally)
 
 Goal:
 
 - a server that accepts authenticated peer registrations and manages WireGuard
-  peers, bundled with a Quasar (Vue 3) SPA that serves both a user
-  self-service portal and an admin management console
+  peers, exposed as an API-only backend container, while a separately deployed
+  Quasar (Vue 3) SPA provides both the user self-service portal and the admin
+  management console
 
 Notes:
 
 - the web portal is merged into Phase 1 (not a separate phase) — it shares the
-  same server, database, JWT auth, and error handling patterns
+  same backend API, database, JWT auth, and error handling patterns
 - frontend uses Quasar Framework components exclusively (QTable, QForm,
   QDialog, QCard, QBtn, QSelect, QInput, QLayout, QDrawer, etc.) to minimize
   raw CSS and maintain uniform design language
-- frontend served from the same Go server at `/app/` and `/admin/`
-  (single-origin, no CORS needed); API stays at `/api/v1/*`
+- frontend is deployed separately on Cloudflare Pages; API stays at
+  `/api/v1/*`, so CORS must allow the chosen Pages origin(s)
+- Podman/Containerfile must remain backend-only; no npm step or SPA asset copy
+  belongs in the default backend container build
+- deployment compatibility requirement:
+  direct public exposure, split public exposure, and Lucky-based forward
+  exposure should remain contract-compatible without core frontend/backend
+  rewrites; reverse HTTP relay modes should be introduced as adapter systems
 - only administrators can generate invite codes or inspect other users' peers
 - ordinary users can only inspect and manage resources owned by their own
   `JWT.sub`
@@ -83,11 +90,13 @@ Tasks:
 - implement Admin middleware (role="admin" check)
 - implement server startup (config loading, DB connect, wg_scnet init,
   reconciliation goroutine)
-- serve web portal static assets under `/app/` and `/admin/` paths (Go embed.FS)
+- keep Podman deployment API-only; any backend-side SPA serving must stay
+  explicit opt-in only
 
 Exit criteria:
 
 - `scnet-server` binary starts, listens on :8080
+- backend Podman deployment starts without requiring npm or a frontend build
 - `POST /auth/register` creates a user with valid invite code
 - `POST /auth/login` returns a valid JWT
 - `GET /me` returns the current user's profile and peer quota usage
@@ -114,7 +123,7 @@ Exit criteria:
 
 Tasks:
 
-- scaffold Quasar project under `server-panel/scnet-panel/` (Vite + TypeScript + Pinia)
+- scaffold Quasar project under `SHUOSC_Network-server-frontend/` (Vite + TypeScript + Pinia)
 - implement shared login flow (POST /auth/login → GET /me → role-based redirect)
 - implement user home page (GET /me + quota usage)
 - implement account settings page (PUT /me + PUT /me/password)
@@ -131,11 +140,13 @@ Tasks:
 - implement Vue Router route guards (`requiresAuth`, `requiresUser`,
   `requiresAdmin`)
 - wire Quasar Notify/Dialog/Loading plugins for UX feedback
-- configure Quasar build to output to `server/admin-panel/dist/spa/` for Go embed
+- configure Quasar build for Cloudflare Pages deployment; optional output copy
+  into `SHUOSC_Network-server-backend/admin-panel/dist/spa/` is local fallback
+  only and must not be required by Podman backend deployment
 
 Exit criteria:
 
-- `POST /auth/login` from the shared login page returns JWT
+- `POST /auth/login` from the shared Cloudflare-hosted login page returns JWT
 - `GET /me` determines whether the browser enters `/app/` or `/admin/`
 - user home page shows account status and peer quota usage
 - account settings page updates contact information and password
@@ -151,7 +162,8 @@ Exit criteria:
 - All API errors display via Quasar Notify toasts
 - Logout clears JWT and redirects to login page
 - the user portal never attempts to recover or display a client private key
-- `quasar build` produces a valid SPA under `server/admin-panel/dist/spa/`
+- `quasar build` produces a deployable SPA for Cloudflare Pages; backend Podman
+  deployment does not depend on that build
 
 ### Phase 1 Minimum E2E Matrix
 
@@ -162,13 +174,13 @@ Phase 1 complete without verifying them.
 |----|-------|----------|-----------------|
 | E2E-01 | guest | register with valid invite | account created, status `active`, role `user` |
 | E2E-02 | guest | register with invalid/expired invite | `400 INVALID_INVITE` |
-| E2E-03 | user | login from shared portal | receives JWT, `GET /me` returns profile, browser routes to `/app/` |
+| E2E-03 | user | login from Cloudflare-hosted shared portal | receives JWT, `GET /me` returns profile, browser routes to `/app/` |
 | E2E-04 | user | update contact info in settings | `PUT /me` persists only allowed fields; role/quota unchanged |
 | E2E-05 | user | change password with wrong current password | `401 AUTH_FAILED` |
 | E2E-06 | user | create peer until quota reached | peers added until limit; next add returns `409 TOO_MANY_PEERS` |
 | E2E-07 | user | view My Peers and disconnect one peer | `GET /me/peers` shows only own peers; disconnect updates wg_scnet and DB |
 | E2E-08 | user | rotate own peer public key | old key invalidated, new key active, no cross-user effect |
-| E2E-09 | admin | login from shared portal | receives JWT, `GET /me` or role bootstrap routes to `/admin/` |
+| E2E-09 | admin | login from Cloudflare-hosted shared portal | receives JWT, `GET /me` or role bootstrap routes to `/admin/` |
 | E2E-10 | admin | list users, edit one user's `max_peers` and `status` | change is persisted and takes effect on next state-changing request |
 | E2E-11 | admin | force-disconnect and revoke peer from admin peers view | wg_scnet and DB state updated correctly |
 | E2E-12 | admin | create invite code and verify it can register a new user | invite appears in admin list and works for signup |
@@ -197,9 +209,9 @@ Deferred items:
   Current meaning:
   the browser is allowed to make cross-origin API reads more freely than a production deployment should allow.
   Development decision on 2026-04-28:
-  defer tightening the allowlist until deployment topology and final frontend origin are stable.
+  defer tightening the allowlist until the final Cloudflare Pages domain/custom-domain list is stable.
   Production revisit:
-  replace wildcard/default-open CORS behavior with an explicit origin allowlist.
+  replace wildcard/default-open CORS behavior with an explicit Cloudflare Pages origin allowlist.
 
 - `SEC-04` CLI stores WireGuard private key and JWT in local files under `~/.scnet/`.
   Current meaning:

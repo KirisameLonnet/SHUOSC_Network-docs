@@ -9,12 +9,29 @@ Before implementing or changing any endpoint, agents must read this document.
 
 ## General Conventions
 
-- Base URL: `https://<server>:8080/api/v1`
+- Base URL: `https://<server>/api/v1` or the exact HTTPS `api_url` returned by
+  Cloudflare Pages `GET /api/server-info`
 - Content-Type: `application/json`
 - Auth: JWT Bearer Token (except `/auth/register`, `/auth/login`, `/health`,
   and `/version`)
 - Error format: `{"error": "human readable message", "code": "ERROR_CODE"}`
 - Success: 200 OK, body contains `{"status": "ok", ...data}`
+
+### Transport Separation Rules
+
+The deployment contract assumes four separate communication planes:
+
+- browser -> Cloudflare Pages over HTTPS for frontend delivery
+- SPA/CLI -> backend API over HTTPS for control-plane requests
+- WireGuard client -> `wg_endpoint` over UDP for tunnel traffic
+- SPA/CLI/backend -> Cloudflare Pages `/api/server-info` over HTTPS for discovery
+
+Normative rules:
+
+- all browser-visible backend API traffic must use HTTPS
+- `api_url` must be an HTTPS URL that resolves to the REST API only
+- `wg_endpoint` must be a UDP endpoint in `host:port` form, not a URL
+- `/api/server-info` is a discovery endpoint only; it is not a reverse proxy for business API requests and not a transport for WireGuard traffic
 
 ## Validation & State Rules
 
@@ -1134,6 +1151,13 @@ Response 401:
 
 - CLI: fetches `GET /api/server-info` → uses `api_url` for API calls, `wg_endpoint` for WireGuard tunnel. `--server-url` flag overrides both.
 - SPA: fetches `GET /api/server-info` at boot → sets `api_url` as `baseUrl` for all `apiFetch` calls. `?api=` URL parameter overrides.
+
+Validation rules for discovery payload:
+
+- `api_url` must begin with `https://`
+- `api_url` must refer to the backend API origin, typically ending in `/api/v1`
+- `wg_endpoint` must not include `http://` or `https://`
+- clients must not substitute `api_url` for `wg_endpoint`, or vice versa
 
 **Server reporting rules:**
 
