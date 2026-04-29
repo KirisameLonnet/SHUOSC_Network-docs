@@ -81,7 +81,7 @@ Tasks:
   admin/user/:id/peers, admin/user/:id edit, admin/peers,
   admin/peer/:id/disconnect, admin/peer/:id/revoke, admin/invites, admin/invite)
 - implement Admin middleware (role="admin" check)
-- implement server startup (config loading, DB connect, wg0 init,
+- implement server startup (config loading, DB connect, wg_scnet init,
   reconciliation goroutine)
 - serve web portal static assets under `/app/` and `/admin/` paths (Go embed.FS)
 
@@ -96,14 +96,17 @@ Exit criteria:
 - `PUT /me/password` changes the current user's password after current-password
   verification
 - `GET /me/peers` lists only the current user's peers
-- `POST /peer/register` with JWT adds a WireGuard peer to wg0
+- `POST /peer/register` with JWT adds a WireGuard peer to wg_scnet
 - `POST /peer/register` returns 409 when user hits max_peers limit
 - `GET /peer/config` with JWT returns the peer's configuration
-- `DELETE /peer/disconnect` with JWT removes the peer from wg0
+- `DELETE /peer/disconnect` with JWT removes the peer from wg_scnet
 - `GET /admin/summary` returns accurate user/peer/invite counts
 - `GET /admin/users` supports pagination, search, and status/role filters
 - `PUT /admin/user/:id` changes per-user max_peers/status, effective immediately
-- `POST /admin/peer/:id/disconnect` removes the peer from wg0
+- `POST /admin/peer/:id/disconnect` removes the peer from wg_scnet
+- `GET /admin/wg` returns WG server status (enabled, public key, peer count)
+- `POST /admin/wg/rotate-key` atomically rotates the server keypair preserving all peers
+- `POST /admin/wg/toggle` enables/disables the WG interface
 - `POST /admin/invite` generates a valid invite code
 - server reconciliation goroutine runs without errors
 
@@ -122,8 +125,9 @@ Tasks:
 - implement admin User Detail page (metadata card + associated peers table)
 - implement admin Peers page (QTable, filters, force-disconnect/revoke actions)
 - implement admin Invites page (QTable, QDialog create form)
+- implement admin WG Management page (rotating server keypair, enabling/disabling WG interface)
 - implement Axios boot file (JWT interceptor, error handling)
-- implement Pinia stores (auth, me, myPeers, dashboard, users, peers, invites)
+- implement Pinia stores (auth, me, myPeers, dashboard, users, peers, invites, wg)
 - implement Vue Router route guards (`requiresAuth`, `requiresUser`,
   `requiresAdmin`)
 - wire Quasar Notify/Dialog/Loading plugins for UX feedback
@@ -142,7 +146,7 @@ Exit criteria:
 - editing a user's max_peers or status via QDialog saves and reflects immediately
 - admin User Detail page shows associated peers with disconnect/revoke actions
 - admin Peers page lists all peers with status filters
-- admin force-disconnecting/revoking a peer removes it from wg0
+- admin force-disconnecting/revoking a peer removes it from wg_scnet
 - admin Invites page shows all invite codes; creating a new invite works
 - All API errors display via Quasar Notify toasts
 - Logout clears JWT and redirects to login page
@@ -162,11 +166,11 @@ Phase 1 complete without verifying them.
 | E2E-04 | user | update contact info in settings | `PUT /me` persists only allowed fields; role/quota unchanged |
 | E2E-05 | user | change password with wrong current password | `401 AUTH_FAILED` |
 | E2E-06 | user | create peer until quota reached | peers added until limit; next add returns `409 TOO_MANY_PEERS` |
-| E2E-07 | user | view My Peers and disconnect one peer | `GET /me/peers` shows only own peers; disconnect updates wg0 and DB |
+| E2E-07 | user | view My Peers and disconnect one peer | `GET /me/peers` shows only own peers; disconnect updates wg_scnet and DB |
 | E2E-08 | user | rotate own peer public key | old key invalidated, new key active, no cross-user effect |
 | E2E-09 | admin | login from shared portal | receives JWT, `GET /me` or role bootstrap routes to `/admin/` |
 | E2E-10 | admin | list users, edit one user's `max_peers` and `status` | change is persisted and takes effect on next state-changing request |
-| E2E-11 | admin | force-disconnect and revoke peer from admin peers view | wg0 and DB state updated correctly |
+| E2E-11 | admin | force-disconnect and revoke peer from admin peers view | wg_scnet and DB state updated correctly |
 | E2E-12 | admin | create invite code and verify it can register a new user | invite appears in admin list and works for signup |
 | E2E-13 | suspended user | attempt login and peer mutation | login denied; existing authenticated mutation requests fail |
 | E2E-14 | portal boundary | user attempts to recover private key from web UI | impossible by design; no API returns private key |

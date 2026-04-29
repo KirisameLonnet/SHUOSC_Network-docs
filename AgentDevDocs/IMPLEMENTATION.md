@@ -26,7 +26,7 @@ SHUOSC_Network/
         peer_handler.go            # POST /peer/register, GET /peer/config,
                                    #   DELETE /peer/disconnect, PUT /peer/replace-key
         admin_handler.go           # Admin endpoints (users, peers, invites,
-                                   #   summary, disconnect/revoke, invite CRUD)
+                                   #   summary, WG key rotation, WG toggle)
         health_handler.go          # GET /health, GET /version
       auth/
         service.go                 # AuthService interface + impl
@@ -119,6 +119,7 @@ SHUOSC_Network/
         UserDetailPage.vue          # Admin user info card + peer table
         PeersPage.vue               # Admin peer table + disconnect/revoke
         InvitesPage.vue             # Admin invite table + create invite QDialog
+        WGManagementPage.vue        # Admin WG key rotation + enable/disable
         NotFoundPage.vue
       components/
         shell/
@@ -157,6 +158,7 @@ SHUOSC_Network/
         users.ts                    # Pinia: admin user list, edit
         peers.ts                    # Pinia: admin peer list, actions
         invites.ts                  # Pinia: admin invite list, create
+        wg.ts                       # Pinia: WG server status, rotate key, toggle
       services/
         me.ts                       # Typed self-service API client (Axios)
         admin.ts                    # Typed API client (Axios)
@@ -190,6 +192,7 @@ not invent ad-hoc navigation.
 | `/admin/users/:id` | `AdminLayout` | `requiresAuth`, `requiresAdmin` | `GET /admin/user/:id`, `GET /admin/user/:id/peers` | normal users redirect to `/app/` |
 | `/admin/peers` | `AdminLayout` | `requiresAuth`, `requiresAdmin` | `GET /admin/peers` | normal users redirect to `/app/` |
 | `/admin/invites` | `AdminLayout` | `requiresAuth`, `requiresAdmin` | `GET /admin/invites` | normal users redirect to `/app/` |
+| `/admin/wg` | `AdminLayout` | `requiresAuth`, `requiresAdmin` | `GET /admin/wg` | normal users redirect to `/app/` |
 | `/:catchAll(.*)*` | `AuthLayout` or none | none | none | render `NotFoundPage.vue` |
 
 ## Web Portal State Matrix
@@ -207,6 +210,7 @@ Each page must implement these UI states explicitly.
 | `UserDetailPage` | metadata + table skeleton | “user has no peers” | retry detail load | 404 page if target user absent |
 | `PeersPage` | table skeleton | “no peers match filter” | retry table load | non-admin redirected away |
 | `InvitesPage` | table skeleton | “no invite codes yet” | retry table load | non-admin redirected away |
+| `WGManagementPage` | status + form skeleton | n/a | inline error + Notify | non-admin redirected away |
 
 Shared behavior rules:
 
@@ -338,6 +342,15 @@ type PeerManager interface {
 
     // ReplaceKey updates a peer's public key (key rotation).
     ReplaceKey(ctx context.Context, userID, oldPubKey, newPubKey string) error
+
+    // RotateServerKey replaces the server WG keypair, preserving all peers.
+    RotateServerKey(newKey wgtypes.Key) (wgtypes.Key, error)
+
+    // WGEnabled reports whether the WG interface is up.
+    WGEnabled() (bool, error)
+
+    // SetWGEnabled enables or disables the WG interface.
+    SetWGEnabled(enabled bool) error
 }
 
 type PeerRegistration struct {
@@ -549,7 +562,7 @@ database:
   sslmode: disable
 
 wireguard:
-  interface: wg0
+  interface: wg_scnet
   listen_port: 51820
   private_key: ${SCNET_WG_PRIVATE_KEY}   # server's own WG private key
   subnet: 10.100.0.0/24
@@ -593,7 +606,7 @@ type DatabaseConfig struct {
 }
 
 type WireGuardConfig struct {
-    Interface  string `yaml:"interface"`   // default: "wg0"
+    Interface  string `yaml:"interface"`   // default: "wg_scnet"
     ListenPort int    `yaml:"listen_port"` // default: 51820
     PrivateKey string `yaml:"private_key"` // server WG private key
     Subnet     string `yaml:"subnet"`       // default: "10.100.0.0/24"
@@ -939,8 +952,8 @@ Depends on: PeerManager, PeerStore, wgctrl
 What to do:
 
 1. Every 5 minutes: list peers from wgctrl, list active peers from DB
-2. Peers in DB but not in wg0: log warning, attempt re-add
-3. Peers in wg0 but not in DB: log warning, remove from wg0
+2. Peers in DB but not in wg_scnet: log warning, attempt re-add to wg_scnet
+3. Peers in wg_scnet but not in DB: log warning, remove from wg_scnet
 4. Update last_seen for peers with recent traffic
 
 Done when: reconciliation runs without errors in a long-running test.

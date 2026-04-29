@@ -768,7 +768,7 @@ Server-side behavior:
 
 ### POST /admin/peer/:id/disconnect
 
-Force-disconnect a peer: remove from wg0 and mark status as disconnected.
+Force-disconnect a peer: remove from wg_scnet and mark status as disconnected.
 
 ```
 Auth: Bearer <admin-jwt>
@@ -796,7 +796,7 @@ Server-side behavior:
 
 ### POST /admin/peer/:id/revoke
 
-Revoke a peer: remove from wg0 and mark status as revoked (permanent).
+Revoke a peer: remove from wg_scnet and mark status as revoked (permanent).
 
 ```
 Auth: Bearer <admin-jwt>
@@ -867,6 +867,110 @@ Server-side behavior:
   - `used_up`: max_uses <= use_count
   - `expired`: expires_at IS NOT NULL AND expires_at <= NOW() AND max_uses > use_count
 - `used_by` is a foreign key to users(id); return as-is (null if unused)
+
+---
+
+## WireGuard Server Management Endpoints
+
+> Availability: admin-only. These endpoints manage the server-side WireGuard
+> interface identity and administrative state. The server never stores client
+> private keys — key rotation here only affects the server identity.
+
+### GET /admin/wg
+
+Get WireGuard server status.
+
+```
+Auth: Bearer <admin-jwt>
+Request: GET /admin/wg
+
+Response 200:
+{
+  "status": "ok",
+  "wg": {
+    "enabled": true,
+    "public_key": "base64-server-public-key...",
+    "listen_port": 51820,
+    "peers_count": 42
+  }
+}
+```
+
+Server-side behavior:
+
+- query the kernel WireGuard device via wgctrl
+- `enabled` is true when the device has a private key set (operational)
+- `enabled` is false when no private key set (administratively turned off)
+- return current server public key and active peer count
+
+### POST /admin/wg/rotate-key
+
+Rotate the server WireGuard keypair atomically. All existing peers are
+preserved and re-registered under the new server identity in a single netlink
+call. Clients must fetch the new server public key via `GET /me/peers` config
+after rotation.
+
+```
+Auth: Bearer <admin-jwt>
+Request:
+{
+  "private_key": "base64-new-server-private-key..."
+}
+
+Response 200:
+{
+  "status": "ok",
+  "public_key": "base64-derived-public-key..."
+}
+
+Response 400 (malformed key):
+{
+  "error": "invalid wireguard private key",
+  "code": "INVALID_KEY"
+}
+```
+
+Server-side behavior:
+
+- parse and validate the new WireGuard private key
+- collect all active peers from the database
+- atomically reconfigure the kernel device: set new private key + replace all
+  peers in a single netlink call
+- the old private key is discarded; the new private key is never persisted or
+  exposed
+- existing peer `allowed_ips`, endpoint, and keepalive settings are preserved
+- return derived public key for client config updates
+
+### POST /admin/wg/toggle
+
+Enable or disable the WireGuard interface.
+
+```
+Auth: Bearer <admin-jwt>
+Request:
+{
+  "enabled": true
+}
+
+Response 200:
+{
+  "status": "ok",
+  "enabled": true
+}
+```
+
+Server-side behavior (enable):
+
+- set the stored server private key and listen port on the kernel device
+- re-add all active peers from the database
+- the interface becomes operational immediately
+
+Server-side behavior (disable):
+
+- zero out the private key on the kernel device
+- remove all peers from the kernel device (peers remain in DB)
+- the interface remains present but has no private key → no handshakes possible
+- clients cannot connect until re-enabled
 
 ---
 

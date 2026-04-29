@@ -43,7 +43,7 @@ client-side. The server never stores private keys.
                     │  │  Podman 容器                  │     │
                     │  │  scnet-server                 │     │
                     │  │  :8080  REST API (CORS 开)    │     │
-                    │  │  wg0    WireGuard 接口        │     │
+                    │  │  wg_scnet    WireGuard 接口        │     │
                     │  │  策略路由 / 代理池             │     │
                     │  │  上报协程 → CF /api/server-info│     │
                     │  └──────────────────────────────┘     │
@@ -137,7 +137,7 @@ cloudflare/
 | Account Service | Current-user profile, contact info, password change, self peer listing | Can only operate on JWT.sub |
 | Peer Manager | Peer CRUD, wgctrl calls | Only operates on authenticated peers |
 | IPAM | IP allocation (10.100.0.0/24) | Unique per peer |
-| Admin Service | Summary aggregation, forced peer ops | Read-only counts + wgctrl actions |
+| Admin Service | Summary aggregation, forced peer ops, WG key rotation, WG toggle | Read-only counts + wgctrl actions |
 | Discovery Reporter | 定时上报 api_url + wg_endpoint 到 CF | Shared secret 鉴权，30s 间隔 |
 | Store | PostgreSQL access | DB is authoritative record |
 | Web Portal (SPA) | Quasar Vue 3 user/admin UI | Cloudflare Pages 托管，API 调 Lucky 穿透地址 |
@@ -147,7 +147,7 @@ cloudflare/
 
 1. Load config (port, DB, WG, discovery settings)
 2. Connect PostgreSQL, run migrations
-3. Initialize Peer Manager (ensure wg0 exists)
+3. Initialize Peer Manager (ensure wg_scnet exists)
 4. Start HTTP server on :8080 (API only, 带 CORS)
 5. Start discovery reporter goroutine (定时上报地址到 CF)
 6. Background: reconciliation goroutine (DB-WG state alignment, every 5 min)

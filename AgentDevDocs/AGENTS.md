@@ -34,6 +34,9 @@ All agents must preserve these rules:
   client-side
 - server operates on Linux kernel WireGuard via wgctrl; no userspace WG on
   server
+- server WireGuard key rotation and administrative toggle (enable/disable)
+  are admin-only operations exposed via the HTTP API; the server never
+  persists the private key beyond its in-memory copy
 - client WireGuard uses wireguard-go UAPI; no dependency on kernel WG on
   desktop clients
 - the authentication boundary is at the HTTP API layer, not inside the WG
