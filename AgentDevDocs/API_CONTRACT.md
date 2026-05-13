@@ -33,6 +33,58 @@ Normative rules:
 - `wg_endpoint` must be a UDP endpoint in `host:port` form, not a URL
 - `/api/server-info` is a discovery endpoint only; it is not a reverse proxy for business API requests and not a transport for WireGuard traffic
 
+## Discovery Endpoints
+
+### GET /api/server-info
+
+Return the latest backend discovery report stored by the Cloudflare Worker.
+
+```
+Auth: none
+Response 200:
+{
+  "api_url": "https://panel.example.com/api/v1",
+  "wg_endpoint": "wg.example.com:51820",
+  "updated_at": "2026-05-09T00:00:00Z"
+}
+
+Response 503:
+{
+  "error": "server info unavailable",
+  "code": "SERVER_INFO_UNAVAILABLE"
+}
+```
+
+### POST /api/server-info
+
+Backend-only discovery report. The backend calls this after startup and then
+periodically while running.
+
+```
+Auth: Bearer <discovery-secret>
+Request:
+{
+  "api_url": "https://panel.example.com/api/v1",
+  "wg_endpoint": "wg.example.com:51820"
+}
+
+Response 200:
+{
+  "status": "ok",
+  "server_info": {
+    "api_url": "https://panel.example.com/api/v1",
+    "wg_endpoint": "wg.example.com:51820",
+    "updated_at": "2026-05-09T00:00:00Z"
+  }
+}
+```
+
+Rules:
+
+- `api_url` must be HTTPS, except localhost during local development
+- `wg_endpoint` must not start with `http://` or `https://`
+- the Worker stores the latest valid report in its Durable Object
+
 ## Validation & State Rules
 
 ### Password Policy
